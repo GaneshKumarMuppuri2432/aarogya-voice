@@ -9,7 +9,9 @@ service cloud.firestore {
 
     // Patients collection
     match /patients/{patientId} {
-      // Only authenticated users can access their own created patients
+      // Allow create if auth matches, but for Phase 3 we also want the patient device 
+      // (which may technically still hold the doctor's auth session) to read its own reminders.
+      // Since MVP uses the doctor's session bound to the device, the old rules work.
       allow create: if request.auth != null && request.resource.data.createdByDoctorId == request.auth.uid;
       allow read, update, delete: if request.auth != null && resource.data.createdByDoctorId == request.auth.uid;
       
@@ -17,6 +19,11 @@ service cloud.firestore {
       match /consultations/{consultationId} {
         allow create: if request.auth != null && request.resource.data.doctorId == request.auth.uid;
         allow read, update, delete: if request.auth != null && resource.data.doctorId == request.auth.uid;
+      }
+      
+      // Phase 3: Reminders sub-collection
+      match /reminders/{reminderId} {
+        allow create, read, update, delete: if request.auth != null;
       }
     }
   }

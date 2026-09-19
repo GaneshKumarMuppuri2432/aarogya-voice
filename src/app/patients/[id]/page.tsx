@@ -105,12 +105,23 @@ export default function DoctorContextPage() {
             )}
           </Card>
 
-          <div className="pt-8">
+          <div className="pt-4 space-y-3">
+            <Button 
+              fullWidth 
+              variant="outline"
+              size="large"
+              onClick={() => router.push(`/patients/${patient.patientId}/caregiver`)}
+              className="border-gray-200 text-gray-700 bg-white"
+            >
+              View Caregiver Summary
+            </Button>
+
             <Button 
               fullWidth 
               variant="outline"
               size="large"
               onClick={handleFinishSetup}
+              className="border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100"
             >
               Finish Setup & Hand to Patient
             </Button>

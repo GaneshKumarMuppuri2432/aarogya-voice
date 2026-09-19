@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { User, Stethoscope } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 
 export default function Home() {
@@ -11,12 +10,7 @@ export default function Home() {
 
   useEffect(() => {
     setMounted(true);
-    // Auto-redirect to patient mode if this device is already bound to a patient
-    const boundPatientId = localStorage.getItem("arogya_patient_id");
-    if (boundPatientId) {
-      router.replace("/patient");
-    }
-  }, [router]);
+  }, []);
 
   if (!mounted) return null;
 
@@ -31,10 +25,10 @@ export default function Home() {
         <Button
           fullWidth
           size="large"
-          className="h-32 text-xl flex flex-col space-y-3 bg-white text-blue-900 border-2 border-transparent hover:border-blue-200 shadow-lg hover:shadow-xl transition-all"
+          className="h-32 text-2xl font-bold flex flex-col space-y-3 bg-white text-blue-900 border-2 border-transparent hover:border-blue-200 shadow-lg hover:shadow-xl transition-all"
           onClick={() => router.push("/patient")}
         >
-          <User size={40} className="text-blue-500" />
+          <span className="text-5xl">🧑🏽‍🦳</span>
           <span>Patient Mode</span>
         </Button>
 
@@ -42,11 +36,11 @@ export default function Home() {
           fullWidth
           variant="outline"
           size="large"
-          className="h-24 flex flex-col space-y-2 border-blue-200 bg-transparent hover:bg-blue-100/50"
+          className="h-28 text-xl font-bold flex flex-col space-y-2 border-blue-200 bg-transparent hover:bg-blue-100/50"
           onClick={() => router.push("/doctor-setup")}
         >
-          <Stethoscope size={28} className="text-blue-600" />
-          <span>Doctor Mode (Setup)</span>
+          <span className="text-4xl">🩺</span>
+          <span>Doctor Mode</span>
         </Button>
       </div>
     </div>

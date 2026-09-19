@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { patientService } from "@/features/patients/patientService";
+import { reminderService } from "@/features/reminders/reminderService";
 import { useAuth } from "@/features/auth/AuthContext";
-import { Consultation, MedicineInstruction } from "@/types";
+import { Consultation, MedicineInstruction, Patient } from "@/types";
 import { ArrowLeft, Loader2, AlertTriangle, CheckCircle2, Edit3, Save } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -15,6 +16,7 @@ export default function ConsultationReviewPage() {
   const router = useRouter();
   const { user } = useAuth();
   
+  const [patient, setPatient] = useState<Patient | null>(null);
   const [consultation, setConsultation] = useState<Consultation | null>(null);
   const [medicines, setMedicines] = useState<MedicineInstruction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,16 +27,18 @@ export default function ConsultationReviewPage() {
 
   useEffect(() => {
     if (patientId && consultationId) {
-      loadConsultation(patientId as string, consultationId as string);
+      loadData(patientId as string, consultationId as string);
     }
   }, [patientId, consultationId]);
 
-  const loadConsultation = async (pId: string, cId: string) => {
+  const loadData = async (pId: string, cId: string) => {
     try {
-      const data = await patientService.getConsultationById(pId, cId);
-      if (data) {
-        setConsultation(data);
-        setMedicines(data.medicines || []);
+      const pData = await patientService.getPatientById(pId);
+      const cData = await patientService.getConsultationById(pId, cId);
+      if (pData) setPatient(pData);
+      if (cData) {
+        setConsultation(cData);
+        setMedicines(cData.medicines || []);
       } else {
         setError("Consultation not found.");
       }
@@ -65,22 +69,30 @@ export default function ConsultationReviewPage() {
   };
 
   const handleVerify = async () => {
-    if (!user) return;
+    if (!user || !patient || !consultation) return;
     setVerifying(true);
     try {
-      await patientService.updateConsultation(patientId as string, consultationId as string, {
-        status: "DOCTOR_VERIFIED",
+      // 1. Verify treatment
+      const updatedConsultation = {
+        ...consultation,
+        status: "DOCTOR_VERIFIED" as const,
         medicines,
         verifiedAt: Date.now(),
         verifiedBy: user.uid,
-      });
+      };
       
-      // Bind device to patient & hand off to Patient Mode
+      await patientService.updateConsultation(patientId as string, consultationId as string, updatedConsultation);
+      
+      // 2. Generate Reminder Schedule (Phase 3)
+      await reminderService.generateRemindersForConsultation(patientId as string, updatedConsultation, patient.preferredLanguage);
+
+      // 3. Bind device to patient & hand off to Patient Mode
       localStorage.setItem("arogya_patient_id", patientId as string);
       router.replace("/patient");
-    } catch (err) {
+    } catch (err: any) {
+      console.error("Verification error:", err);
       setVerifying(false);
-      alert("Verification failed. Please try again.");
+      alert(`Verification failed: ${err.message}. (Did you update Firestore rules?)`);
     }
   };
 

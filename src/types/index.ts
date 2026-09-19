@@ -52,3 +52,22 @@ export interface Consultation {
   verifiedBy?: string | null;
   language: string;
 }
+
+// Phase 3 Types
+
+export type ReminderStatus = "UPCOMING" | "DUE" | "COMPLETED" | "MISSED";
+
+export interface Reminder {
+  reminderId?: string;
+  patientId: string;
+  consultationId: string;
+  medicineId: string;
+  medicineName: string;
+  dosage: string;
+  scheduledTime: string; // The exact timing string extracted (e.g. "08:00 AM")
+  foodCondition: string | null;
+  status: ReminderStatus;
+  preferredLanguage: string;
+  createdAt: number;
+  updatedAt: number;
+}

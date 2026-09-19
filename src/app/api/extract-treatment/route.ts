@@ -2,97 +2,95 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI, SchemaType, Schema } from "@google/generative-ai";
 
 const apiKey = process.env.GEMINI_API_KEY;
-// The API threw an error saying 2.5-flash is deprecated and to use 3.6-flash
 const modelName = process.env.GEMINI_MODEL && process.env.GEMINI_MODEL.includes("flash") && !process.env.GEMINI_MODEL.includes("2.5") 
   ? process.env.GEMINI_MODEL 
   : "gemini-3.6-flash";
 
-if (!apiKey) {
-  console.warn("GEMINI_API_KEY is missing from environment variables.");
-}
-
 const genAI = new GoogleGenerativeAI(apiKey || "dummy");
 
-// Define the structured schema for Gemini output
-const medicineSchema: Schema = {
-  type: SchemaType.ARRAY,
-  description: "List of extracted medicine instructions",
-  items: {
-    type: SchemaType.OBJECT,
-    properties: {
-      medicineName: {
-        type: SchemaType.STRING,
-        description: "The name of the medicine. Return null if unclear or missing.",
-      },
-      dose: {
-        type: SchemaType.STRING,
-        description: "The dosage amount (e.g., '1 tablet', '5ml'). Return null if unclear or missing.",
-      },
-      frequency: {
-        type: SchemaType.STRING,
-        description: "How often it should be taken (e.g., 'twice daily', 'morning and night'). Return null if missing.",
-      },
-      timing: {
-        type: SchemaType.STRING,
-        description: "Specific time of day (e.g., 'morning', 'night', '8 AM'). Return null if missing.",
-      },
-      foodCondition: {
-        type: SchemaType.STRING,
-        description: "Whether to take before, after, or with food. Return null if not specified.",
-      },
-      duration: {
-        type: SchemaType.STRING,
-        description: "How many days or weeks to take the medicine (e.g., '5 days'). Return null if missing.",
-      },
-      additionalInstructions: {
-        type: SchemaType.STRING,
-        description: "Any other special instructions.",
-      },
+const extractionSchema: Schema = {
+  type: SchemaType.OBJECT,
+  description: "Extracted treatment information or non-treatment detection.",
+  properties: {
+    success: {
+      type: SchemaType.BOOLEAN,
+      description: "True if valid medical treatment information is found, false if the input is unrelated to treatment."
     },
-    required: ["medicineName", "dose", "timing", "foodCondition", "duration"],
+    inputType: {
+      type: SchemaType.STRING,
+      description: "Must be 'TREATMENT' or 'NON_TREATMENT'"
+    },
+    message: {
+      type: SchemaType.STRING,
+      description: "A friendly message explaining if no treatment was found, e.g., 'We couldn't identify a medicine from the doctor's input.'"
+    },
+    medicines: {
+      type: SchemaType.ARRAY,
+      description: "List of extracted medicine instructions. Only populate if success is true.",
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          medicineName: { type: SchemaType.STRING, description: "Medicine name or null if missing." },
+          dose: { type: SchemaType.STRING, description: "Dosage amount or null if missing." },
+          frequency: { type: SchemaType.STRING, description: "Frequency or null if missing." },
+          timing: { type: SchemaType.STRING, description: "Specific time of day or null if missing." },
+          foodCondition: { type: SchemaType.STRING, description: "Food instructions or null if missing." },
+          duration: { type: SchemaType.STRING, description: "Duration or null if missing." },
+          additionalInstructions: { type: SchemaType.STRING, description: "Special instructions." },
+        },
+        required: ["medicineName", "dose", "timing", "foodCondition", "duration"],
+      }
+    }
   },
+  required: ["success", "inputType"]
 };
 
 export async function POST(req: NextRequest) {
   try {
     if (!apiKey) {
-      return NextResponse.json({ error: "Gemini API key is not configured on the server." }, { status: 500 });
+      return NextResponse.json({ error: "Gemini API key is not configured. Please check your connection." }, { status: 500 });
     }
 
     const { transcript } = await req.json();
 
-    if (!transcript) {
-      return NextResponse.json({ error: "Transcript is required." }, { status: 400 });
+    if (!transcript || transcript.trim().length === 0) {
+      return NextResponse.json({ error: "We couldn't hear an instruction. Please try recording again." }, { status: 400 });
     }
 
     const model = genAI.getGenerativeModel({
       model: modelName,
       generationConfig: {
         responseMimeType: "application/json",
-        responseSchema: medicineSchema,
-        temperature: 0.1, // Keep it highly deterministic
+        responseSchema: extractionSchema,
+        temperature: 0.1,
       },
     });
 
     const prompt = `
       You are a precise medical transcription assistant. 
-      Extract structured treatment instructions from the following doctor's voice transcript.
+      Analyze the following doctor's voice transcript.
       
       CRITICAL RULES:
-      1. DO NOT infer, guess, or invent missing information.
-      2. If a field like duration, timing, dose, or food condition is NOT explicitly stated by the doctor, you MUST return null for that field.
-      3. Distinguish between multiple medicines and separate them into array items.
+      1. INTENT CHECK: If the transcript is a casual greeting, a joke, unrelated chatter, or does NOT contain clear medical instructions/medicines, return success: false, inputType: "NON_TREATMENT", and a friendly message.
+      2. NEVER guess, infer, or invent missing medical information. 
+      3. If a field (duration, timing, dose, food condition) is NOT explicitly stated, return null for that field. Do NOT invent "1 tablet" or "Morning" if it was not spoken.
       
       Transcript: "${transcript}"
     `;
 
     const result = await model.generateContent(prompt);
     const responseText = result.response.text();
-    const medicines = JSON.parse(responseText);
+    const parsed = JSON.parse(responseText);
 
-    // Provide an independent validation layer on top of the structured output
-    const validatedMedicines = medicines.map((med: any) => ({
-      id: crypto.randomUUID(), // unique ID for editing
+    if (!parsed.success || parsed.inputType === "NON_TREATMENT") {
+      return NextResponse.json({ 
+        success: false,
+        message: parsed.message || "No treatment information detected. Please enter the treatment information again."
+      }, { status: 200 }); // Return 200 so the frontend can handle the business logic gracefully
+    }
+
+    const validatedMedicines = (parsed.medicines || []).map((med: any) => ({
+      id: crypto.randomUUID(),
       medicineName: med.medicineName || null,
       dose: med.dose || null,
       frequency: med.frequency || null,
@@ -102,9 +100,9 @@ export async function POST(req: NextRequest) {
       additionalInstructions: med.additionalInstructions || null,
     }));
 
-    return NextResponse.json({ medicines: validatedMedicines });
+    return NextResponse.json({ success: true, medicines: validatedMedicines });
   } catch (error: any) {
     console.error("Gemini Extraction Error:", error);
-    return NextResponse.json({ error: "Failed to process treatment instructions." }, { status: 500 });
+    return NextResponse.json({ error: "We couldn't process the doctor's instruction right now. Please try again or enter manually." }, { status: 500 });
   }
 }

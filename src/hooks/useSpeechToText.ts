@@ -28,43 +28,57 @@ export function useSpeechToText(language = "en-IN") {
         };
 
         recognitionRef.current.onerror = (event: any) => {
-          console.error("Speech recognition error", event.error);
-          setError(event.error);
+          console.error("Speech recognition error:", event.error);
+          if (event.error === 'not-allowed') {
+            setError("Microphone access denied. Please allow microphone permissions or use manual text entry. (Note: Voice recording requires HTTPS or localhost).");
+          } else {
+            setError(`Speech recognition error: ${event.error}. Please use manual entry.`);
+          }
           setIsListening(false);
         };
 
         recognitionRef.current.onend = () => {
-          // Only change state if it naturally ended
           setIsListening(false);
         };
       } else {
-        setError("Browser does not support Web Speech API");
+        setError("Your browser does not support voice recording. Please use manual text entry.");
       }
     }
 
     return () => {
       if (recognitionRef.current) {
-        recognitionRef.current.stop();
+        try { recognitionRef.current.stop(); } catch (e) {}
       }
     };
   }, [language]);
 
   const startListening = () => {
     setError(null);
-    setTranscript("");
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.start();
-        setIsListening(true);
-      } catch (err) {
-        console.error("Error starting recognition", err);
+    if (!recognitionRef.current) {
+      setError("Your browser does not support voice recording. Please use manual text entry.");
+      return;
+    }
+    
+    // We append to existing transcript rather than wiping it
+    // setTranscript(""); 
+
+    try {
+      recognitionRef.current.start();
+      setIsListening(true);
+    } catch (err: any) {
+      console.error("Error starting recognition", err);
+      // Already started error can happen if button double clicked
+      if (err.name !== 'InvalidStateError') {
+         setError("Failed to start recording: " + err.message);
       }
     }
   };
 
   const stopListening = () => {
     if (recognitionRef.current) {
-      recognitionRef.current.stop();
+      try {
+        recognitionRef.current.stop();
+      } catch (err) {}
       setIsListening(false);
     }
   };
@@ -72,7 +86,7 @@ export function useSpeechToText(language = "en-IN") {
   return {
     isListening,
     transcript,
-    setTranscript, // expose so user can manually edit fallback text
+    setTranscript, // Manual fallback
     startListening,
     stopListening,
     error,
