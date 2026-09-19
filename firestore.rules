@@ -1,0 +1,23 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Patients collection
+    match /patients/{patientId} {
+      // Only authenticated users can access their own created patients
+      allow create: if request.auth != null && request.resource.data.createdByDoctorId == request.auth.uid;
+      allow read, update, delete: if request.auth != null && resource.data.createdByDoctorId == request.auth.uid;
+      
+      // Phase 2: Consultations sub-collection
+      match /consultations/{consultationId} {
+        allow create: if request.auth != null && request.resource.data.doctorId == request.auth.uid;
+        allow read, update, delete: if request.auth != null && resource.data.doctorId == request.auth.uid;
+      }
+    }
+  }
+}
